@@ -221,6 +221,20 @@ var Component = Construct.extend(
 				viewCallbacks.tag(this.prototype.tag, function(el, options) {
 					new self(el, options);
 				});
+// Register this component to be a WebComponent
+function BabelHTMLElement(){
+  const newTarget = this.__proto__.constructor;
+  return Reflect.construct(HTMLElement, [], newTarget);
+}
+Object.setPrototypeOf(BabelHTMLElement, HTMLElement);
+Object.setPrototypeOf(BabelHTMLElement.prototype, HTMLElement.prototype);
+
+Object.assign(this, new BabelHTMLElement);
+
+				this.connectedCallback = function connectedCallback(){
+					new self(this,options
+				}
+				
 			}
 
 		}
