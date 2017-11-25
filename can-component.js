@@ -232,7 +232,44 @@ Object.setPrototypeOf(BabelHTMLElement.prototype, HTMLElement.prototype);
 Object.assign(this, new BabelHTMLElement);
 
 				this.connectedCallback = function connectedCallback(){
-					new self(this,options
+					function(el, tagName, tagData){
+						let el = this
+		var helperTagCallback = tagData.options.get('tags.' + tagName,{proxyMethods: false}),
+			tagCallback = helperTagCallback || tags[tagName];
+
+		// If this was an element like <foo-bar> that doesn't have a component, just render its content
+		var scope = tagData.scope,
+			res;
+
+		if(tagCallback) {
+			res = Observation.ignore(tagCallback)(el, tagData);
+		} else {
+			res = scope;
+		}
+
+		//!steal-remove-start
+		if (!tagCallback) {
+			var GLOBAL = getGlobal();
+			var ceConstructor = GLOBAL.document.createElement(tagName).constructor;
+			// If not registered as a custom element, the browser will use default constructors
+			if (ceConstructor === GLOBAL.HTMLElement || ceConstructor === GLOBAL.HTMLUnknownElement) {
+				dev.warn('can-view-callbacks: No custom element found for ' + tagName);	
+			}
+		}
+		//!steal-remove-end
+
+		// If the tagCallback gave us something to render with, and there is content within that element
+		// render it!
+		if (res && tagData.subtemplate) {
+
+			if (scope !== res) {
+				scope = scope.add(res);
+			}
+			var result = tagData.subtemplate(scope, tagData.options);
+			var frag = typeof result === "string" ? can.view.frag(result) : result;
+			domMutate.appendChild.call(el, frag);
+		}
+	}
 				}
 				
 			}
