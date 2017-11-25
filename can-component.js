@@ -138,148 +138,7 @@ function makeInsertionTagCallback(tagName, componentTagData, shadowTagData, leak
 	};
 }
 
-var Component = Construct.extend(
-
-	// ## Static
-	{
-		// ### setup
-		//
-		// When a component is extended, this sets up the component's internal constructor
-		// functions and views for later fast initialization.
-		setup: function() {
-			Construct.setup.apply(this, arguments);
-
-			// When `Component.setup` function is ran for the first time, `Component` doesn't exist yet
-			// which ensures that the following code is ran only in constructors that extend `Component`.
-			if (Component) {
-				var self = this;
-
-				// Define a control using the `events` prototype property.
-				if(!isEmptyObject(this.prototype.events)) {
-					this.Control = ComponentControl.extend(this.prototype.events);
-				}
-
-				//!steal-remove-start
-				// If a constructor is assigned to the viewModel, give a warning
-				if (this.prototype.viewModel && canReflect.isConstructorLike(this.prototype.viewModel)) {
-					canDev.warn("can-component: Assigning a DefineMap or constructor type to the viewModel property may not be what you intended. Did you mean ViewModel instead? More info: https://canjs.com/doc/can-component.prototype.ViewModel.html");
-				}
-				//!steal-remove-end
-
-				// Look at viewModel, scope, and ViewModel properties and set one of:
-				//  - this.viewModelHandler
-				//  - this.ViewModel
-				//  - this.viewModelInstance
-				var protoViewModel = this.prototype.viewModel || this.prototype.scope;
-
-				if(protoViewModel && this.prototype.ViewModel) {
-					throw new Error("Cannot provide both a ViewModel and a viewModel property");
-				}
-				var vmName = string.capitalize( string.camelize(this.prototype.tag) )+"VM";
-				if(this.prototype.ViewModel) {
-					if(typeof this.prototype.ViewModel === "function") {
-						this.ViewModel = this.prototype.ViewModel;
-					} else {
-						this.ViewModel = types.DefaultMap.extend(vmName, this.prototype.ViewModel);
-					}
-				} else {
-
-					if(protoViewModel) {
-						if(typeof protoViewModel === "function") {
-							if(canReflect.isObservableLike(protoViewModel.prototype) && canReflect.isMapLike(protoViewModel.prototype)) {
-								this.ViewModel = protoViewModel;
-							} else {
-								this.viewModelHandler = protoViewModel;
-							}
-						} else {
-							if(canReflect.isObservableLike(protoViewModel) && canReflect.isMapLike(protoViewModel)) {
-								//!steal-remove-start
-								canLog.warn("can-component: "+this.prototype.tag+" is sharing a single map across all component instances");
-								//!steal-remove-end
-								this.viewModelInstance = protoViewModel;
-							} else {
-								this.ViewModel = types.DefaultMap.extend(vmName,protoViewModel);
-							}
-						}
-					} else {
-						this.ViewModel = types.DefaultMap.extend(vmName,{});
-					}
-				}
-
-				// Convert the template into a renderer function.
-				if (this.prototype.template) {
-					//!steal-remove-start
-					canLog.warn('can-component.prototype.template: is deprecated and will be removed in a future release. Use can-component.prototype.view');
-					//!steal-remove-end
-					this.renderer = this.prototype.template;
-				}
-				if (this.prototype.view) {
-					this.renderer = this.prototype.view;
-				}
-
-				// Register this component to be created when its `tag` is found.
-				viewCallbacks.tag(this.prototype.tag, function(el, options) {
-					new self(el, options);
-				});
-// Register this component to be a WebComponent
-function BabelHTMLElement(){
-  const newTarget = this.__proto__.constructor;
-  return Reflect.construct(HTMLElement, [], newTarget);
-}
-Object.setPrototypeOf(BabelHTMLElement, HTMLElement);
-Object.setPrototypeOf(BabelHTMLElement.prototype, HTMLElement.prototype);
-
-Object.assign(this, new BabelHTMLElement);
-
-				this.connectedCallback = function connectedCallback(){
-					function(el, tagName, tagData){
-						let el = this
-		var helperTagCallback = tagData.options.get('tags.' + tagName,{proxyMethods: false}),
-			tagCallback = helperTagCallback || tags[tagName];
-
-		// If this was an element like <foo-bar> that doesn't have a component, just render its content
-		var scope = tagData.scope,
-			res;
-
-		if(tagCallback) {
-			res = Observation.ignore(tagCallback)(el, tagData);
-		} else {
-			res = scope;
-		}
-
-		//!steal-remove-start
-		if (!tagCallback) {
-			var GLOBAL = getGlobal();
-			var ceConstructor = GLOBAL.document.createElement(tagName).constructor;
-			// If not registered as a custom element, the browser will use default constructors
-			if (ceConstructor === GLOBAL.HTMLElement || ceConstructor === GLOBAL.HTMLUnknownElement) {
-				dev.warn('can-view-callbacks: No custom element found for ' + tagName);	
-			}
-		}
-		//!steal-remove-end
-
-		// If the tagCallback gave us something to render with, and there is content within that element
-		// render it!
-		if (res && tagData.subtemplate) {
-
-			if (scope !== res) {
-				scope = scope.add(res);
-			}
-			var result = tagData.subtemplate(scope, tagData.options);
-			var frag = typeof result === "string" ? can.view.frag(result) : result;
-			domMutate.appendChild.call(el, frag);
-		}
-	}
-				}
-				
-			}
-
-		}
-	}, {
-		// ## Prototype
-		// ### setup
-		// When a new component instance is created, setup bindings, render the view, etc.
-		setup: function(el, componentTagData) {
+var initComponent = function(el, componentTagData) {
 			var component = this;
 			// If a view is not provided, we fall back to
 			// dynamic scoping regardless of settings.
@@ -334,7 +193,8 @@ Object.assign(this, new BabelHTMLElement);
 
 			// Set `viewModel` to `this.viewModel` and set it to the element's `data` object as a `viewModel` property
 			this.viewModel = viewModel;
-
+			// Set also the viewModel directly on the element why not better behavier for webcomponents
+			el.viewModel = this.viewModel
 			domData.set.call(el, "viewModel", viewModel);
 			domData.set.call(el, "preventDataBindings", true);
 
@@ -444,6 +304,112 @@ Object.assign(this, new BabelHTMLElement);
 			// update the nodeList with the new children so the mapping gets applied
 			nodeLists.update(nodeList, getChildNodes(el));
 		}
+
+var Component = Construct.extend(
+
+	// ## Static
+	{
+		// ### setup
+		//
+		// When a component is extended, this sets up the component's internal constructor
+		// functions and views for later fast initialization.
+		setup: function() {
+			Construct.setup.apply(this, arguments);
+
+			// When `Component.setup` function is ran for the first time, `Component` doesn't exist yet
+			// which ensures that the following code is ran only in constructors that extend `Component`.
+			if (Component) {
+				var self = this;
+
+				// Define a control using the `events` prototype property.
+				if(!isEmptyObject(this.prototype.events)) {
+					this.Control = ComponentControl.extend(this.prototype.events);
+				}
+
+				//!steal-remove-start
+				// If a constructor is assigned to the viewModel, give a warning
+				if (this.prototype.viewModel && canReflect.isConstructorLike(this.prototype.viewModel)) {
+					canDev.warn("can-component: Assigning a DefineMap or constructor type to the viewModel property may not be what you intended. Did you mean ViewModel instead? More info: https://canjs.com/doc/can-component.prototype.ViewModel.html");
+				}
+				//!steal-remove-end
+
+				// Look at viewModel, scope, and ViewModel properties and set one of:
+				//  - this.viewModelHandler
+				//  - this.ViewModel
+				//  - this.viewModelInstance
+				var protoViewModel = this.prototype.viewModel || this.prototype.scope;
+
+				if(protoViewModel && this.prototype.ViewModel) {
+					throw new Error("Cannot provide both a ViewModel and a viewModel property");
+				}
+				var vmName = string.capitalize( string.camelize(this.prototype.tag) )+"VM";
+				if(this.prototype.ViewModel) {
+					if(typeof this.prototype.ViewModel === "function") {
+						this.ViewModel = this.prototype.ViewModel;
+					} else {
+						this.ViewModel = types.DefaultMap.extend(vmName, this.prototype.ViewModel);
+					}
+				} else {
+
+					if(protoViewModel) {
+						if(typeof protoViewModel === "function") {
+							if(canReflect.isObservableLike(protoViewModel.prototype) && canReflect.isMapLike(protoViewModel.prototype)) {
+								this.ViewModel = protoViewModel;
+							} else {
+								this.viewModelHandler = protoViewModel;
+							}
+						} else {
+							if(canReflect.isObservableLike(protoViewModel) && canReflect.isMapLike(protoViewModel)) {
+								//!steal-remove-start
+								canLog.warn("can-component: "+this.prototype.tag+" is sharing a single map across all component instances");
+								//!steal-remove-end
+								this.viewModelInstance = protoViewModel;
+							} else {
+								this.ViewModel = types.DefaultMap.extend(vmName,protoViewModel);
+							}
+						}
+					} else {
+						this.ViewModel = types.DefaultMap.extend(vmName,{});
+					}
+				}
+
+				// Convert the template into a renderer function.
+				if (this.prototype.template) {
+					//!steal-remove-start
+					canLog.warn('can-component.prototype.template: is deprecated and will be removed in a future release. Use can-component.prototype.view');
+					//!steal-remove-end
+					this.renderer = this.prototype.template;
+				}
+				if (this.prototype.view) {
+					this.renderer = this.prototype.view;
+				}
+
+				// Register this component to be created when its `tag` is found.
+				viewCallbacks.tag(this.prototype.tag, function(el, options) {
+					new self(el, options);
+				});
+// Register this component to be a WebComponent
+function BabelHTMLElement(){
+  const newTarget = this.__proto__.constructor;
+  return Reflect.construct(HTMLElement, [], newTarget);
+}
+Object.setPrototypeOf(BabelHTMLElement, HTMLElement);
+Object.setPrototypeOf(BabelHTMLElement.prototype, HTMLElement.prototype);
+
+Object.assign(this, new BabelHTMLElement);
+
+				this.connectedCallback = function connectedCallback(){
+					new self(this,options
+				}
+				
+			}
+
+		}
+	}, {
+		// ## Prototype
+		// ### setup
+		// When a new component instance is created, setup bindings, render the view, etc.
+		setup: initComponent
 	});
 
 module.exports = namespace.Component = Component;
